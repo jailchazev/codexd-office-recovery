@@ -23,15 +23,23 @@ small{display:block;margin-top:24px;color:#91a5bf}
 <main>
 <div class="brand">CODEXD OFFICE</div>
 <h1>Restablecer contraseña</h1>
-<p>Establece una nueva contraseña para tu cuenta.</p>
-<form id="form" hidden>
+<p id="intro">Solicita un enlace seguro en tu correo para crear una nueva contraseña.</p>
+
+<form id="requestForm">
+<label for="email">Correo de tu cuenta</label>
+<input id="email" type="email" required autocomplete="email" placeholder="tu-correo@ejemplo.com">
+<button id="requestButton">Enviar enlace de recuperación</button>
+</form>
+
+<form id="passwordForm" hidden>
 <label for="password">Nueva contraseña</label>
 <input id="password" type="password" minlength="8" required autocomplete="new-password">
 <label for="confirm">Confirmar contraseña</label>
 <input id="confirm" type="password" minlength="8" required autocomplete="new-password">
-<button id="submit">Guardar nueva contraseña</button>
+<button id="saveButton">Guardar nueva contraseña</button>
 </form>
-<div id="status">Comprobando enlace de recuperación...</div>
+
+<div id="status">Puedes solicitar aquí un nuevo enlace de recuperación.</div>
 <small>Desarrollado por CodexDigital-Perú</small>
 </main>
 <script type="module">
@@ -39,18 +47,40 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SUPABASE_URL = 'https://pzlqqkoksljjmyliohac.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_8E1V7V6-XFnMQH2P9iApow_B-oFd7mO';
-
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-const form = document.querySelector('#form');
+
+const requestForm = document.querySelector('#requestForm');
+const passwordForm = document.querySelector('#passwordForm');
 const status = document.querySelector('#status');
-const submit = document.querySelector('#submit');
+const requestButton = document.querySelector('#requestButton');
+const saveButton = document.querySelector('#saveButton');
+
+requestForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  requestButton.disabled = true;
+  status.textContent = 'Enviando correo de recuperación...';
+
+  const email = document.querySelector('#email').value.trim();
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: location.origin + location.pathname
+  });
+
+  requestButton.disabled = false;
+  status.textContent = error
+    ? 'No se pudo enviar el correo: ' + error.message
+    : 'Si la cuenta existe, recibirás un correo con el enlace de recuperación. Revisa también Spam o Correo no deseado. Abre el enlace desde este mismo navegador.';
+});
 
 async function initialize() {
   const hash = new URLSearchParams(location.hash.slice(1));
   const query = new URLSearchParams(location.search);
-
   const authError = hash.get('error_description') || query.get('error_description');
-  if (authError) throw new Error(authError);
+
+  if (authError) {
+    status.textContent = 'El enlace presentó un error: ' + authError +
+      '. Solicita uno nuevo usando el formulario.';
+    return;
+  }
 
   const code = query.get('code');
   if (code) {
@@ -59,27 +89,25 @@ async function initialize() {
   } else {
     const access_token = hash.get('access_token');
     const refresh_token = hash.get('refresh_token');
-
     if (access_token && refresh_token && hash.get('type') === 'recovery') {
-      const { error } = await supabase.auth.setSession({
-        access_token, refresh_token
-      });
+      const { error } = await supabase.auth.setSession({ access_token, refresh_token });
       if (error) throw error;
     }
   }
 
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error(
-    'El enlace no es válido o ha caducado. Solicita un correo nuevo.'
-  );
-
-  form.hidden = false;
-  status.textContent = 'Enlace validado. Introduce tu nueva contraseña.';
+  if (session) {
+    requestForm.hidden = true;
+    passwordForm.hidden = false;
+    document.querySelector('#intro').textContent = 'Enlace validado. Crea tu nueva contraseña.';
+    status.textContent = 'Enlace válido. Introduce y confirma tu nueva contraseña.';
+  } else if (!authError) {
+    status.textContent = 'No hay un enlace de recuperación activo. Escribe tu correo para solicitar uno nuevo.';
+  }
 }
 
-form.addEventListener('submit', async (event) => {
+passwordForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-
   const password = document.querySelector('#password').value;
   const confirm = document.querySelector('#confirm').value;
 
@@ -88,27 +116,26 @@ form.addEventListener('submit', async (event) => {
     return;
   }
 
-  submit.disabled = true;
+  saveButton.disabled = true;
   status.textContent = 'Actualizando contraseña...';
-
   const { error } = await supabase.auth.updateUser({ password });
-
-  submit.disabled = false;
+  saveButton.disabled = false;
 
   if (error) {
-    status.textContent = 'Error: ' + error.message;
+    status.textContent = 'No se pudo actualizar la contraseña: ' + error.message;
     return;
   }
 
-  form.hidden = true;
-  status.textContent =
-    '¡Contraseña actualizada! Ya puedes iniciar sesión como administrador.';
+  passwordForm.hidden = true;
+  status.textContent = '¡Contraseña actualizada! Ya puedes iniciar sesión como administrador.';
   await supabase.auth.signOut();
   history.replaceState(null, '', location.pathname);
+  requestForm.hidden = true;
 });
 
 initialize().catch(error => {
-  status.textContent = 'No se pudo validar el enlace: ' + error.message;
+  status.textContent = 'No se pudo validar el enlace: ' + error.message +
+    '. Solicita uno nuevo con el formulario.';
 });
 </script>
 </body>
