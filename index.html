@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Recuperar contraseña | CodexD Office</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:20px;background:#101827;color:#edf4ff;font-family:Arial,sans-serif}
+main{width:100%;max-width:440px;padding:32px;background:#1b293d;border:1px solid #34445b;border-radius:18px}
+h1{font-size:25px}.brand{color:#80baff;font-weight:bold;letter-spacing:2px}
+p{color:#bac9dc;line-height:1.5}
+label{display:block;margin:18px 0 7px}
+input{width:100%;padding:13px;border-radius:9px;border:1px solid #50627a;background:#101827;color:white;font-size:16px}
+button{width:100%;padding:14px;margin-top:22px;border:0;border-radius:9px;background:#287ed1;color:white;font-size:16px;font-weight:bold;cursor:pointer}
+button:disabled{opacity:.5}
+#status{margin-top:18px;padding:12px;background:#101827;border-radius:9px;white-space:pre-wrap}
+small{display:block;margin-top:24px;color:#91a5bf}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+<div class="brand">CODEXD OFFICE</div>
+<h1>Restablecer contraseña</h1>
+<p>Establece una nueva contraseña para tu cuenta.</p>
+<form id="form" hidden>
+<label for="password">Nueva contraseña</label>
+<input id="password" type="password" minlength="8" required autocomplete="new-password">
+<label for="confirm">Confirmar contraseña</label>
+<input id="confirm" type="password" minlength="8" required autocomplete="new-password">
+<button id="submit">Guardar nueva contraseña</button>
+</form>
+<div id="status">Comprobando enlace de recuperación...</div>
+<small>Desarrollado por CodexDigital-Perú</small>
+</main>
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const SUPABASE_URL = 'https://pzlqqkoksljjmyliohac.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_8E1V7V6-XFnMQH2P9iApow_B-oFd7mO';
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const form = document.querySelector('#form');
+const status = document.querySelector('#status');
+const submit = document.querySelector('#submit');
+
+async function initialize() {
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const query = new URLSearchParams(location.search);
+
+  const authError = hash.get('error_description') || query.get('error_description');
+  if (authError) throw new Error(authError);
+
+  const code = query.get('code');
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) throw error;
+  } else {
+    const access_token = hash.get('access_token');
+    const refresh_token = hash.get('refresh_token');
+
+    if (access_token && refresh_token && hash.get('type') === 'recovery') {
+      const { error } = await supabase.auth.setSession({
+        access_token, refresh_token
+      });
+      if (error) throw error;
+    }
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error(
+    'El enlace no es válido o ha caducado. Solicita un correo nuevo.'
+  );
+
+  form.hidden = false;
+  status.textContent = 'Enlace validado. Introduce tu nueva contraseña.';
+}
+
+form.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  const password = document.querySelector('#password').value;
+  const confirm = document.querySelector('#confirm').value;
+
+  if (password !== confirm) {
+    status.textContent = 'Las contraseñas no coinciden.';
+    return;
+  }
+
+  submit.disabled = true;
+  status.textContent = 'Actualizando contraseña...';
+
+  const { error } = await supabase.auth.updateUser({ password });
+
+  submit.disabled = false;
+
+  if (error) {
+    status.textContent = 'Error: ' + error.message;
+    return;
+  }
+
+  form.hidden = true;
+  status.textContent =
+    '¡Contraseña actualizada! Ya puedes iniciar sesión como administrador.';
+  await supabase.auth.signOut();
+  history.replaceState(null, '', location.pathname);
+});
+
+initialize().catch(error => {
+  status.textContent = 'No se pudo validar el enlace: ' + error.message;
+});
+</script>
+</body>
+</html>
